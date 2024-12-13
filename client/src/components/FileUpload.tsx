@@ -50,6 +50,7 @@ export default function FileUpload({ onFilesUploaded }: FileUploadProps) {
       }
 
       const data = await response.json();
+      localStorage.setItem('currentBatchId', data.batchId);
       setUploadProgress(100);
       onFilesUploaded(uploadedFiles);
     } catch (error) {

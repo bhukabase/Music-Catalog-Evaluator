@@ -56,7 +56,7 @@ export function registerRoutes(app: Express): Server {
   app.get('/api/processing/:batchId', async (req, res) => {
     try {
       const status = await db.query.processingStatus.findFirst({
-        where: { batchId: req.params.batchId }
+        where: (fields) => eq(fields.batchId, req.params.batchId)
       });
 
       if (!status) {

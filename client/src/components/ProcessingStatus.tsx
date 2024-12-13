@@ -24,7 +24,13 @@ export default function ProcessingStatus({
     if (status === 'processing') {
       const checkStatus = async () => {
         try {
-          const response = await fetch('/api/processing/status');
+          // Get the batch ID from the last upload response
+          const batchId = localStorage.getItem('currentBatchId');
+          if (!batchId) {
+            throw new Error('No batch ID found');
+          }
+          
+          const response = await fetch(`/api/processing/${batchId}`);
           const data = await response.json();
           
           if (data.status === 'complete') {
