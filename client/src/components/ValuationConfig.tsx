@@ -43,11 +43,23 @@ export default function ValuationConfig() {
   const onSubmit = async (data: ValuationConfig) => {
     setIsSubmitting(true);
     try {
-      // Submit configuration
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      setLocation("/valuation/report");
+      const response = await fetch('/api/valuation/config', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(data)
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to submit configuration');
+      }
+
+      const result = await response.json();
+      setLocation(`/valuation/${result.id}/report`);
     } catch (error) {
-      console.error(error);
+      console.error('Failed to submit configuration:', error);
+      // TODO: Add error toast notification
     } finally {
       setIsSubmitting(false);
     }

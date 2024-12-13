@@ -16,7 +16,7 @@ const upload = multer({
   }
 });
 
-export function registerRoutes(app: Express): Server {
+export function registerRoutes(app: Express, port: number = 3001): Server {
   // File upload endpoint
   app.post('/api/upload', upload.array('files'), async (req: Request & { files?: Express.Multer.File[] }, res) => {
     try {
@@ -98,5 +98,14 @@ export function registerRoutes(app: Express): Server {
   });
 
   const httpServer = createServer(app);
+  httpServer.on('error', (error: any) => {
+    if (error.code === 'EADDRINUSE') {
+      console.error(`Port ${port} is in use, trying another port...`);
+      httpServer.listen(0); // Let the OS assign a random available port
+    } else {
+      console.error('Server error:', error);
+    }
+  });
+  
   return httpServer;
 }

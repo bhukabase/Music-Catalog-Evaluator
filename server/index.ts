@@ -56,10 +56,33 @@ app.use((req, res, next) => {
     serveStatic(app);
   }
 
-  // ALWAYS serve the app on port 5000
-  // this serves both the API and the client
-  const PORT = 5000;
-  server.listen(PORT, "0.0.0.0", () => {
-    log(`serving on port ${PORT}`);
-  });
+  // Try to start with port 5000, fallback to other ports if needed
+  const tryPort = (port: number): Promise<number> => {
+    return new Promise((resolve, reject) => {
+      server.once('error', (err: any) => {
+        if (err.code === 'EADDRINUSE') {
+          // Try next port
+          tryPort(port + 1).then(resolve).catch(reject);
+        } else {
+          reject(err);
+        }
+      });
+      
+      server.once('listening', () => {
+        resolve(port);
+      });
+      
+      server.listen(port, "0.0.0.0");
+    });
+  };
+
+  // Start server with initial port 5000
+  tryPort(5000)
+    .then(port => {
+      log(`Server running on port ${port}`);
+    })
+    .catch(err => {
+      log(`Failed to start server: ${err.message}`);
+      process.exit(1);
+    });
 })();

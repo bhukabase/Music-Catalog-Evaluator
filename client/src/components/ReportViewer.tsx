@@ -18,29 +18,54 @@ import {
   ResponsiveContainer 
 } from 'recharts';
 
-const mockData = {
-  summary: {
-    totalTracks: 150,
-    currentRevenue: 250000,
-    totalStreams: 15000000,
-    projectedValue: 2500000
-  },
-  projections: [
-    { year: 2024, revenue: 250000 },
-    { year: 2025, revenue: 175000 },
-    { year: 2026, revenue: 140000 },
-    { year: 2027, revenue: 112000 },
-    { year: 2028, revenue: 100800 },
-    { year: 2029, revenue: 90720 },
-    { year: 2030, revenue: 81648 },
-  ]
-};
+import { useParams } from "wouter";
+import { useEffect, useState } from "react";
+import { ValuationReport } from "@/lib/types";
 
 export default function ReportViewer() {
+  const { id } = useParams();
+  const [report, setReport] = useState<ValuationReport | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    async function fetchReport() {
+      try {
+        const response = await fetch(`/api/valuation/${id}/report`);
+        if (!response.ok) {
+          throw new Error('Failed to fetch report');
+        }
+        const data = await response.json();
+        setReport(data);
+      } catch (error) {
+        console.error('Error fetching report:', error);
+        setError('Failed to load report');
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    if (id) {
+      fetchReport();
+    }
+  }, [id]);
+
   const handleDownloadPDF = () => {
     // Implement PDF download
     console.log("Downloading PDF...");
   };
+
+  if (loading) {
+    return <div>Loading report...</div>;
+  }
+
+  if (error) {
+    return <div>Error: {error}</div>;
+  }
+
+  if (!report) {
+    return <div>No report data available</div>;
+  }
 
   return (
     <div className="space-y-6">
@@ -54,27 +79,27 @@ export default function ReportViewer() {
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
         <Card className="p-4">
           <div className="text-sm text-gray-500">Total Tracks</div>
-          <div className="text-2xl font-bold">{mockData.summary.totalTracks}</div>
+          <div className="text-2xl font-bold">{report.summary.totalTracks}</div>
         </Card>
         
         <Card className="p-4">
           <div className="text-sm text-gray-500">Current Annual Revenue</div>
           <div className="text-2xl font-bold">
-            ${mockData.summary.currentRevenue.toLocaleString()}
+            ${report.summary.currentRevenue.toLocaleString()}
           </div>
         </Card>
         
         <Card className="p-4">
           <div className="text-sm text-gray-500">Total Streams</div>
           <div className="text-2xl font-bold">
-            {(mockData.summary.totalStreams / 1000000).toFixed(1)}M
+            {(report.summary.totalStreams / 1000000).toFixed(1)}M
           </div>
         </Card>
         
         <Card className="p-4">
           <div className="text-sm text-gray-500">Projected Value</div>
           <div className="text-2xl font-bold text-primary">
-            ${mockData.summary.projectedValue.toLocaleString()}
+            ${report.summary.projectedValue.toLocaleString()}
           </div>
         </Card>
       </div>
@@ -83,7 +108,7 @@ export default function ReportViewer() {
         <h3 className="text-lg font-semibold mb-4">Revenue Projections</h3>
         <div className="h-[400px]">
           <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={mockData.projections}>
+            <LineChart data={report.projections}>
               <CartesianGrid strokeDasharray="3 3" />
               <XAxis dataKey="year" />
               <YAxis />
@@ -110,14 +135,14 @@ export default function ReportViewer() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {mockData.projections.map((year) => (
+            {report.projections.map((year) => (
               <TableRow key={year.year}>
                 <TableCell>{year.year}</TableCell>
                 <TableCell className="text-right">
                   ${year.revenue.toLocaleString()}
                 </TableCell>
                 <TableCell className="text-right">
-                  {((1 - year.revenue / mockData.projections[0].revenue) * 100).toFixed(1)}%
+                  {((1 - year.revenue / report.projections[0].revenue) * 100).toFixed(1)}%
                 </TableCell>
               </TableRow>
             ))}
