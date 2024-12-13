@@ -24,11 +24,31 @@ export function registerRoutes(app: Express): Server {
         return res.status(400).json({ message: 'No files uploaded' });
       }
 
+      // Validate file types
+      const validTypes = ['text/csv', 'application/pdf', 'image/png', 'image/jpeg'];
+      const invalidFiles = req.files.filter(file => !validTypes.includes(file.mimetype));
+      
+      if (invalidFiles.length > 0) {
+        return res.status(400).json({ 
+          message: 'Invalid file types detected',
+          invalidFiles: invalidFiles.map(f => f.originalname)
+        });
+      }
+
+      // Initialize processing status in database
       const batchId = await processFiles(req.files);
-      res.json({ batchId });
+      
+      // Return batch ID for status tracking
+      res.json({ 
+        batchId,
+        message: 'Files uploaded successfully and processing started'
+      });
     } catch (error) {
       console.error('Upload error:', error);
-      res.status(500).json({ message: error instanceof Error ? error.message : 'Internal server error' });
+      res.status(500).json({ 
+        message: error instanceof Error ? error.message : 'Internal server error',
+        error: process.env.NODE_ENV === 'development' ? error : undefined
+      });
     }
   });
 
