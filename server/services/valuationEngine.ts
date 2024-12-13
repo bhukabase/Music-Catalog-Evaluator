@@ -17,39 +17,56 @@ interface ProjectionYear {
 }
 
 export async function calculateValuation(config: ValuationConfig) {
-  const streamData = await getStreamData();
-  const projections = calculateProjections(streamData, config);
-  const summary = generateSummary(streamData, projections);
+  try {
+    const streamData = await getStreamData();
+    if (!Array.isArray(streamData) || streamData.length === 0) {
+      throw new Error('No valid streaming data found. Please ensure files are processed correctly.');
+    }
+    
+    const projections = calculateProjections(streamData, config);
+    const summary = generateSummary(streamData, projections);
   
-  // Store valuation results
-  const valuation = await db.insert(valuations).values({
-    config: JSON.stringify(config),
-    summary: JSON.stringify(summary),
-    projections: JSON.stringify(projections),
-    createdAt: new Date()
-  }).returning();
+    // Store valuation results
+    const valuation = await db.insert(valuations).values({
+      config: config,
+      summary: summary,
+      projections: projections,
+      createdAt: new Date()
+    }).returning();
 
-  return {
-    id: valuation[0].id,
-    config,
-    summary,
-    projections,
-    createdAt: valuation[0].createdAt
-  };
+    return {
+      id: valuation[0].id,
+      config,
+      summary,
+      projections,
+      createdAt: valuation[0].createdAt
+    };
+  } catch (error) {
+    console.error('Valuation calculation error:', error);
+    throw new Error(`Failed to calculate valuation: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  }
 }
 
 async function getStreamData(): Promise<StreamData[]> {
-  // Get the latest completed processing batch
-  const latestBatch = await db.query.processingStatus.findFirst({
-    where: eq(processingStatus.status, 'complete'),
-    orderBy: (processingStatus, { desc }) => [desc(processingStatus.completedAt)]
-  });
+  try {
+    // Get the latest completed processing batch
+    const latestBatch = await db.query.processingStatus.findFirst({
+      where: eq(processingStatus.status, 'complete'),
+      orderBy: (processingStatus, { desc }) => [desc(processingStatus.completedAt)]
+    });
 
-  if (!latestBatch || !latestBatch.results) {
-    throw new Error('No processed data available');
+    if (!latestBatch || !latestBatch.results) {
+      throw new Error('No processed data available');
+    }
+
+    // Return results directly if it's already an object, or parse if it's a string
+    return typeof latestBatch.results === 'string' 
+      ? JSON.parse(latestBatch.results)
+      : latestBatch.results as StreamData[];
+  } catch (error) {
+    console.error('Error getting stream data:', error);
+    throw new Error(`Failed to get stream data: ${error instanceof Error ? error.message : 'Unknown error'}`);
   }
-
-  return JSON.parse(latestBatch.results);
 }
 
 function calculateProjections(

@@ -2,7 +2,6 @@ import type { Express, Request } from "express";
 import { createServer, type Server } from "http";
 import multer from "multer";
 import { processFiles } from "./services/fileProcessor";
-import { analyzeDocument } from "./services/claude";
 import { calculateValuation } from "./services/valuationEngine";
 import { db } from "@db/index";
 import { valuations, processingStatus, valuationConfigSchema } from "@db/schema";
@@ -16,7 +15,7 @@ const upload = multer({
   }
 });
 
-export function registerRoutes(app: Express, port: number = 3001): Server {
+export function registerRoutes(app: Express): Server {
   // File upload endpoint
   app.post('/api/upload', upload.array('files'), async (req: Request & { files?: Express.Multer.File[] }, res) => {
     try {
@@ -64,15 +63,18 @@ export function registerRoutes(app: Express, port: number = 3001): Server {
       }
 
       res.json(status);
-    } catch (error: any) {
-      res.status(500).json({ message: error.message });
+    } catch (error) {
+      console.error('Processing status error:', error);
+      res.status(500).json({ 
+        message: error instanceof Error ? error.message : 'Internal server error'
+      });
     }
   });
 
   // Valuation config endpoint
   app.post('/api/valuation/config', async (req, res) => {
     try {
-      console.log('Received config:', req.body); // Add logging
+      console.log('Received config:', req.body);
       
       // Parse and validate the configuration
       const configResult = valuationConfigSchema.safeParse(req.body);
@@ -97,11 +99,10 @@ export function registerRoutes(app: Express, port: number = 3001): Server {
         summary: result.summary,
         projections: result.projections
       });
-    } catch (error: any) {
+    } catch (error) {
       console.error('Valuation config error:', error);
       res.status(500).json({ 
-        message: 'Failed to process valuation configuration',
-        error: process.env.NODE_ENV === 'development' ? error.message : undefined
+        message: error instanceof Error ? error.message : 'Failed to process valuation configuration'
       });
     }
   });
@@ -110,7 +111,7 @@ export function registerRoutes(app: Express, port: number = 3001): Server {
   app.get('/api/valuation/:id/report', async (req, res) => {
     try {
       const valuation = await db.query.valuations.findFirst({
-        where: { id: parseInt(req.params.id) }
+        where: (fields) => eq(fields.id, parseInt(req.params.id))
       });
 
       if (!valuation) {
@@ -118,20 +119,14 @@ export function registerRoutes(app: Express, port: number = 3001): Server {
       }
 
       res.json(valuation);
-    } catch (error: any) {
-      res.status(500).json({ message: error.message });
+    } catch (error) {
+      console.error('Report generation error:', error);
+      res.status(500).json({ 
+        message: error instanceof Error ? error.message : 'Failed to generate report'
+      });
     }
   });
 
-  const httpServer = createServer(app);
-  httpServer.on('error', (error: any) => {
-    if (error.code === 'EADDRINUSE') {
-      console.error(`Port ${port} is in use, trying another port...`);
-      httpServer.listen(0); // Let the OS assign a random available port
-    } else {
-      console.error('Server error:', error);
-    }
-  });
-  
-  return httpServer;
+  const server = createServer(app);
+  return server;
 }
