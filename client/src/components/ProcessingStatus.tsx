@@ -22,22 +22,35 @@ export default function ProcessingStatus({
 
   useEffect(() => {
     if (status === 'processing') {
-      // Simulate processing steps
-      let currentStep = 0;
-      const interval = setInterval(() => {
-        if (currentStep >= steps.length) {
-          clearInterval(interval);
-          onComplete();
-          return;
+      const checkStatus = async () => {
+        try {
+          const response = await fetch('/api/processing/status');
+          const data = await response.json();
+          
+          if (data.status === 'complete') {
+            onComplete();
+          } else if (data.status === 'error') {
+            console.error('Processing error:', data.error);
+          } else {
+            // Update progress for the current step
+            const currentStep = Math.floor(data.progress / 25); // 4 steps, 25% each
+            for (let i = 0; i < steps.length; i++) {
+              if (i < currentStep) {
+                steps[i].progress = 100;
+              } else if (i === currentStep) {
+                steps[i].progress = (data.progress % 25) * 4;
+              }
+            }
+          }
+        } catch (error) {
+          console.error('Failed to check status:', error);
         }
+      };
 
-        steps[currentStep].progress = 100;
-        currentStep++;
-      }, 3000);
-
+      const interval = setInterval(checkStatus, 2000);
       return () => clearInterval(interval);
     }
-  }, [status]);
+  }, [status, onComplete]);
 
   return (
     <div className="space-y-6">

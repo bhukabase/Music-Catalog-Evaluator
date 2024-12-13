@@ -34,18 +34,27 @@ export default function FileUpload({ onFilesUploaded }: FileUploadProps) {
 
   const handleUpload = async () => {
     try {
-      // Simulate upload progress
-      let progress = 0;
-      const interval = setInterval(() => {
-        progress += 10;
-        setUploadProgress(progress);
-        if (progress >= 100) {
-          clearInterval(interval);
-          onFilesUploaded(uploadedFiles);
-        }
-      }, 500);
+      setUploadProgress(10);
+      const formData = new FormData();
+      uploadedFiles.forEach(file => {
+        formData.append('files', file);
+      });
+
+      const response = await fetch('/api/upload', {
+        method: 'POST',
+        body: formData
+      });
+
+      if (!response.ok) {
+        throw new Error('Upload failed');
+      }
+
+      const data = await response.json();
+      setUploadProgress(100);
+      onFilesUploaded(uploadedFiles);
     } catch (error) {
       console.error('Upload failed:', error);
+      setUploadProgress(0);
     }
   };
 
