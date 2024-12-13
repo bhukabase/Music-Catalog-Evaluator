@@ -1,0 +1,131 @@
+Project: Music Catalog Valuation Tool
+Primary Goal: Create a web application that enables music rights holders to quickly analyze and project the value of their music catalogs using royalty statements and streaming data.
+
+Core Functionality:
+
+1. Data Input
+- Users can upload multiple file types:
+  * CSV files (streaming data)
+  * PDF files (royalty statements)
+  * Images (screenshots of dashboards)
+- Drag-and-drop interface for file uploads
+- Preview of uploaded files with ability to remove
+- Support for batch uploads
+- Progress indicator during file processing
+
+2. Data Processing Backend
+- Implement Claude AI integration for:
+  * OCR processing of PDF statements and images
+  * Natural language understanding of royalty statements
+  * Data extraction and normalization
+  * Pattern recognition across multiple statements
+- Process streaming data:
+  * CSV parsing with error handling
+  * Data validation and cleaning
+  * Automatic format detection
+  * Cross-platform data normalization
+
+3. Valuation Engine
+- Configure standard valuation parameters:
+  * Platform-specific payout rates (Spotify: $0.004, Apple Music: $0.01)
+  * Platform stream ratios (Apple Music = 1/3 of Spotify)
+  * Year-over-year decay rates:
+    - Years 1-2: 30% decay
+    - Years 3-4: 20% decay
+    - Years 5+: 10% decay
+- Implement projection models:
+  * 7-year revenue forecasting
+  * Platform-specific growth modeling
+  * Risk-adjusted valuations
+  * Historical performance analysis
+
+4. Report Generation
+- Create professional PDF reports including:
+  * Executive Summary
+  * Current Catalog Overview
+    - Total tracks
+    - Release timeline
+    - Current revenue
+    - Total streams
+  * Future Projections
+    - Year-by-year breakdowns
+    - Platform-specific projections
+    - Revenue forecasts
+  * Top Performing Tracks
+  * Risk Analysis
+  * Methodology Explanation
+- Include data visualizations:
+  * Revenue projection charts
+  * Historical performance graphs
+  * Platform distribution analysis
+
+5. User Interface
+- Clean, professional design with:
+  * Intuitive file upload area
+  * Processing status indicators
+  * Report preview
+  * Export options
+- Responsive design for desktop and tablet
+- Print-optimized report styling
+
+Technical Requirements:
+
+1. Frontend
+- React-based SPA
+- Tailwind CSS for styling
+- Component library: shadcn/ui
+- Data visualization: Recharts
+- PDF generation capabilities
+- File handling: drag-and-drop + traditional upload
+
+2. Backend
+- Claude AI integration for document processing
+- Secure file handling
+- Data processing pipeline
+- CSV parsing with PapaParse
+- Error handling and validation
+
+3. Data Processing
+- Implement CatalogValuationModel class for calculations
+- Support multiple input formats
+- Handle edge cases and data inconsistencies
+- Maintain calculation accuracy
+
+4. Security
+- Secure file upload
+- Data privacy considerations
+- Temporary file storage only
+- Secure AI API integration
+
+User Flow:
+1. User arrives at landing page
+2. Uploads royalty statements/streaming data through drag-and-drop or file selection
+3. System displays uploaded files with option to remove/add more
+4. User initiates analysis
+5. Progress indicator shows processing status
+6. System generates and displays report
+7. User can preview, print, or download PDF version
+
+Error Handling:
+- Invalid file formats
+- Corrupt data
+- Processing failures
+- API timeouts
+- Memory limitations
+
+Performance Requirements:
+- File processing: < 30 seconds
+- Report generation: < 15 seconds
+- PDF export: < 5 seconds
+- Supports up to 50MB total upload size
+- Handles up to 1000 tracks per analysis
+
+Future Considerations:
+1. User accounts for saving reports
+2. Template customization
+3. Batch processing
+4. Additional platforms integration
+5. Custom valuation parameters
+6. Historical report comparison
+
+Please implement this system with a focus on reliability, accuracy, and user experience. The final product should feel professional and trustworthy while maintaining simplicity in use.
