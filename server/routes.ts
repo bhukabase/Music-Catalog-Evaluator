@@ -5,7 +5,7 @@ import { processFiles } from "./services/fileProcessor";
 import { analyzeDocument } from "./services/claude";
 import { calculateValuation } from "./services/valuationEngine";
 import { db } from "@db/index";
-import { valuations, processingStatus } from "@db/schema";
+import { valuations, processingStatus, valuationConfigSchema } from "@db/schema";
 import { eq } from "drizzle-orm";
 import type { ProcessingStatus } from "@/lib/types";
 
@@ -72,11 +72,37 @@ export function registerRoutes(app: Express, port: number = 3001): Server {
   // Valuation config endpoint
   app.post('/api/valuation/config', async (req, res) => {
     try {
-      const config = req.body;
-      const result = await calculateValuation(config);
-      res.json(result);
+      console.log('Received config:', req.body); // Add logging
+      
+      // Parse and validate the configuration
+      const configResult = valuationConfigSchema.safeParse(req.body);
+      
+      if (!configResult.success) {
+        console.error('Validation error:', configResult.error);
+        return res.status(400).json({
+          message: 'Invalid configuration',
+          errors: configResult.error.errors
+        });
+      }
+
+      const result = await calculateValuation(configResult.data);
+      
+      if (!result) {
+        throw new Error('Failed to generate valuation');
+      }
+      
+      res.json({
+        id: result.id,
+        config: result.config,
+        summary: result.summary,
+        projections: result.projections
+      });
     } catch (error: any) {
-      res.status(500).json({ message: error.message });
+      console.error('Valuation config error:', error);
+      res.status(500).json({ 
+        message: 'Failed to process valuation configuration',
+        error: process.env.NODE_ENV === 'development' ? error.message : undefined
+      });
     }
   });
 

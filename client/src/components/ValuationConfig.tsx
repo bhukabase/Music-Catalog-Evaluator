@@ -43,6 +43,8 @@ export default function ValuationConfig() {
   const onSubmit = async (data: ValuationConfig) => {
     setIsSubmitting(true);
     try {
+      console.log('Submitting config:', data); // Add logging
+      
       const response = await fetch('/api/valuation/config', {
         method: 'POST',
         headers: {
@@ -51,15 +53,20 @@ export default function ValuationConfig() {
         body: JSON.stringify(data)
       });
 
+      const result = await response.json();
+
       if (!response.ok) {
-        throw new Error('Failed to submit configuration');
+        throw new Error(result.message || 'Failed to submit configuration');
       }
 
-      const result = await response.json();
+      if (!result.id) {
+        throw new Error('Invalid response from server');
+      }
+
       setLocation(`/valuation/${result.id}/report`);
     } catch (error) {
       console.error('Failed to submit configuration:', error);
-      // TODO: Add error toast notification
+      alert(error instanceof Error ? error.message : 'Failed to submit configuration');
     } finally {
       setIsSubmitting(false);
     }

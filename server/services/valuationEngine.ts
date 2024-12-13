@@ -23,13 +23,19 @@ export async function calculateValuation(config: ValuationConfig) {
   
   // Store valuation results
   const valuation = await db.insert(valuations).values({
-    config: config,
-    summary,
-    projections,
+    config: JSON.stringify(config),
+    summary: JSON.stringify(summary),
+    projections: JSON.stringify(projections),
     createdAt: new Date()
   }).returning();
 
-  return valuation[0];
+  return {
+    id: valuation[0].id,
+    config,
+    summary,
+    projections,
+    createdAt: valuation[0].createdAt
+  };
 }
 
 async function getStreamData(): Promise<StreamData[]> {
