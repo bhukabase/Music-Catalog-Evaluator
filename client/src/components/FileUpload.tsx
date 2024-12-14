@@ -14,18 +14,29 @@ export default function FileUpload({ onFilesUploaded }: FileUploadProps) {
   const [uploadProgress, setUploadProgress] = useState(0);
 
   const onDrop = useCallback((acceptedFiles: File[]) => {
-    setUploadedFiles((prev) => [...prev, ...acceptedFiles]);
+    console.log('Files dropped:', acceptedFiles);
+    const validFiles = acceptedFiles.filter(file => {
+      const isValidSize = file.size <= 50 * 1024 * 1024; // 50MB
+      if (!isValidSize) {
+        console.warn(`File ${file.name} exceeds 50MB limit`);
+      }
+      return isValidSize;
+    });
+    setUploadedFiles((prev) => [...prev, ...validFiles]);
   }, []);
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
     accept: {
       'text/csv': ['.csv'],
+      'application/vnd.ms-excel': ['.csv'],
+      'application/csv': ['.csv'],
       'application/pdf': ['.pdf'],
       'image/png': ['.png'],
       'image/jpeg': ['.jpg', '.jpeg']
     },
-    maxSize: 50 * 1024 * 1024 // 50MB
+    maxSize: 50 * 1024 * 1024, // 50MB
+    multiple: true
   });
 
   const removeFile = (index: number) => {
@@ -33,6 +44,11 @@ export default function FileUpload({ onFilesUploaded }: FileUploadProps) {
   };
 
   const handleUpload = async () => {
+    if (uploadedFiles.length === 0) {
+      alert('Please select files to upload');
+      return;
+    }
+
     try {
       setUploadProgress(10);
       const formData = new FormData();
@@ -40,22 +56,27 @@ export default function FileUpload({ onFilesUploaded }: FileUploadProps) {
         formData.append('files', file);
       });
 
+      console.log('Uploading files:', uploadedFiles.map(f => f.name));
+
       const response = await fetch('/api/upload', {
         method: 'POST',
         body: formData
       });
 
+      const data = await response.json();
+
       if (!response.ok) {
-        throw new Error('Upload failed');
+        throw new Error(data.message || 'Upload failed');
       }
 
-      const data = await response.json();
+      console.log('Upload successful:', data);
       localStorage.setItem('currentBatchId', data.batchId);
       setUploadProgress(100);
       onFilesUploaded(uploadedFiles);
     } catch (error) {
       console.error('Upload failed:', error);
       setUploadProgress(0);
+      alert(error instanceof Error ? error.message : 'Failed to upload files. Please try again.');
     }
   };
 

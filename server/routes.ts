@@ -17,36 +17,63 @@ const upload = multer({
 
 export function registerRoutes(app: Express): Server {
   // File upload endpoint
-  app.post('/api/upload', upload.array('files'), async (req: Request & { files: Express.Multer.File[] }, res) => {
+  app.post('/api/upload', upload.array('files', 10), async (req: Request, res) => {
     try {
-      if (!req.files || !Array.isArray(req.files)) {
+      console.log('Received upload request');
+      
+      const files = (req as any).files;
+      if (!files || !Array.isArray(files) || files.length === 0) {
+        console.error('No files received in request');
         return res.status(400).json({ message: 'No files uploaded' });
       }
 
-      // Validate file types
-      const validTypes = ['text/csv', 'application/pdf', 'image/png', 'image/jpeg'];
-      const invalidFiles = req.files.filter(file => !validTypes.includes(file.mimetype));
+      console.log('Files received:', files.map(f => ({
+        name: f.originalname,
+        size: f.size,
+        type: f.mimetype
+      })));
+
+      // More lenient file type validation
+      const validTypes = [
+        'text/csv',
+        'application/csv',
+        'application/pdf',
+        'image/png',
+        'image/jpeg',
+        'image/jpg',
+        // Common variations
+        'application/vnd.ms-excel',
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+      ];
+
+      const invalidFiles = files.filter(file => !validTypes.some(type => 
+        file.mimetype.toLowerCase().includes(type.toLowerCase().split('/')[1])
+      ));
       
       if (invalidFiles.length > 0) {
+        console.error('Invalid file types:', invalidFiles.map(f => f.mimetype));
         return res.status(400).json({ 
-          message: 'Invalid file types detected',
+          message: 'Invalid file types detected. Please upload CSV, PDF, PNG, or JPEG files only.',
           invalidFiles: invalidFiles.map(f => f.originalname)
         });
       }
 
       // Initialize processing status in database
-      const batchId = await processFiles(req.files);
+      console.log('Starting file processing');
+      const batchId = await processFiles(files);
+      console.log('Processing started with batch ID:', batchId);
       
       // Return batch ID for status tracking
       res.json({ 
         batchId,
-        message: 'Files uploaded successfully and processing started'
+        message: 'Files uploaded successfully and processing started',
+        files: files.map(f => f.originalname)
       });
     } catch (error) {
       console.error('Upload error:', error);
       res.status(500).json({ 
-        message: error instanceof Error ? error.message : 'Internal server error',
-        error: process.env.NODE_ENV === 'development' ? error : undefined
+        message: 'File upload failed. Please try again.',
+        details: error instanceof Error ? error.message : 'Unknown error'
       });
     }
   });
