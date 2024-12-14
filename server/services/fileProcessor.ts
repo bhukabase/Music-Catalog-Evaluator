@@ -4,7 +4,7 @@ import Papa from 'papaparse';
 import fs from 'fs/promises';
 import { db } from '@db/index';
 import { processingStatus } from '@db/schema';
-import { analyzeDocument } from './claude';
+import { analyzeDocument, processImage } from './claude';
 import { eq } from 'drizzle-orm';
 import { Buffer } from 'buffer';
 import { ProcessingStatus } from '@/lib/types';
@@ -26,44 +26,82 @@ interface ClaudeResponse {
 export async function processFiles(files: Express.Multer.File[]): Promise<string> {
   // Generate batch ID
   const batchId = Date.now().toString();
+  console.log(`Starting batch processing with ID: ${batchId}`);
 
   // Initialize processing status
   await db.insert(processingStatus).values({
     batchId,
     status: 'processing',
     progress: 0,
-    createdAt: new Date()
+    createdAt: new Date(),
+    results: null,
+    error: null
   });
 
   try {
     const results: ProcessedData[] = [];
     let progress = 0;
     const increment = 100 / files.length;
+    const errors: string[] = [];
 
     for (const file of files) {
       try {
-        const result = await processFile(file);
-        results.push(...result);
+        console.log(`[Batch ${batchId}] Processing file: ${file.originalname}`);
         
+        // Validate file size
+        if (file.size > 50 * 1024 * 1024) {
+          throw new Error(`File ${file.originalname} exceeds 50MB limit`);
+        }
+
+        // Process file and get results
+        const result = await processFile(file);
+        console.log(`[Batch ${batchId}] File processed successfully:`, {
+          filename: file.originalname,
+          recordCount: result.length,
+          sample: result[0]
+        });
+        
+        if (result.length === 0) {
+          throw new Error(`No valid data extracted from ${file.originalname}`);
+        }
+
+        results.push(...result);
         progress += increment;
+        
+        // Update progress in database
         await updateProgress(batchId, Math.min(progress, 99));
       } catch (error) {
-        console.error(`Error processing file ${file.originalname}:`, error);
-        // Continue processing other files
+        const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+        errors.push(`Failed to process ${file.originalname}: ${errorMsg}`);
+        console.error(`[Batch ${batchId}] Error processing file:`, {
+          filename: file.originalname,
+          error: errorMsg
+        });
       }
     }
 
+    // Handle overall batch status
     if (results.length === 0) {
-      throw new Error('No files were successfully processed');
+      throw new Error(`No files were successfully processed. Errors: ${errors.join('; ')}`);
     }
 
-    // Store results in database
+    // Store results and mark as complete
     await storeResults(batchId, results);
     await updateProgress(batchId, 100);
+    
+    console.log(`[Batch ${batchId}] Processing completed:`, {
+      totalFiles: files.length,
+      processedFiles: results.length,
+      totalRecords: results.length,
+      errors: errors.length > 0 ? errors : 'None'
+    });
 
     return batchId;
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+    console.error(`[Batch ${batchId}] Processing failed:`, errorMessage);
+    
+    // Update status to error
     await db.update(processingStatus)
       .set({ 
         status: 'error', 
@@ -71,27 +109,35 @@ export async function processFiles(files: Express.Multer.File[]): Promise<string
         updatedAt: new Date()
       })
       .where(eq(processingStatus.batchId, batchId));
-    throw error;
+      
+    throw new Error(`File processing failed: ${errorMessage}`);
   }
 }
 
-async function processFile(file: { originalname: string; path: string }): Promise<ProcessedData[]> {
+async function processFile(file: Express.Multer.File): Promise<ProcessedData[]> {
+  console.log(`Starting to process file: ${file.originalname}`);
   const ext = file.originalname.split('.').pop()?.toLowerCase();
   const content = await fs.readFile(file.path);
 
   try {
+    let result: ProcessedData[];
     switch (ext) {
       case 'csv':
-        return await processCsv(content);
+        result = await processCsv(content);
+        break;
       case 'pdf':
-        return await processPdf(content);
+        result = await processPdf(content);
+        break;
       case 'png':
       case 'jpg':
       case 'jpeg':
-        return await processImage(content.toString('base64'));
+        result = await processImage(content.toString('base64'));
+        break;
       default:
         throw new Error(`Unsupported file type: ${ext}`);
     }
+    console.log(`File processed successfully with ${result.length} records`);
+    return result;
   } finally {
     // Cleanup temporary file
     await fs.unlink(file.path).catch(console.error);
@@ -100,104 +146,93 @@ async function processFile(file: { originalname: string; path: string }): Promis
 
 async function processCsv(content: Buffer): Promise<ProcessedData[]> {
   return new Promise((resolve, reject) => {
+    console.log('Processing CSV file...');
     Papa.parse(content.toString(), {
       header: true,
       complete: (results) => {
-        const data = results.data.map((row: Record<string, string>) => ({
-          streams: parseInt(row.streams || row.Streams || '0', 10),
-          revenue: parseFloat(row.revenue || row.Revenue || '0'),
-          platform: row.platform || row.Platform || 'Unknown',
-          date: row.date || row.Date || new Date().toISOString()
-        }));
-        resolve(data.filter(item => !isNaN(item.streams) && !isNaN(item.revenue)));
+        try {
+          const data = results.data
+            .filter((row: any) => row && typeof row === 'object')
+            .map((row: any) => ({
+              streams: parseInt(row.streams || row.Streams || '0', 10),
+              revenue: parseFloat(row.revenue || row.Revenue || '0'),
+              platform: row.platform || row.Platform || 'Unknown',
+              date: row.date || row.Date || new Date().toISOString()
+            }))
+            .filter(item => !isNaN(item.streams) && !isNaN(item.revenue));
+          
+          console.log(`CSV processed: ${data.length} valid records found`);
+          resolve(data);
+        } catch (error) {
+          console.error('Error processing CSV:', error);
+          reject(error);
+        }
       },
-      error: reject
+      error: (error) => {
+        console.error('CSV parsing error:', error);
+        reject(error);
+      }
     });
   });
 }
 
 async function processPdf(content: Buffer): Promise<ProcessedData[]> {
-  // Load PDF document
-  const pdfDoc = await PDFDocument.load(content);
-  const numPages = pdfDoc.getPageCount();
-  const textContent: string[] = [];
-
-  // Initialize Tesseract worker
-  const worker = await createWorker();
-
+  console.log('Starting PDF processing...');
+  let worker;
   try {
+    const pdfDoc = await PDFDocument.load(content);
+    const numPages = pdfDoc.getPageCount();
+    const textContent: string[] = [];
+
+    // Initialize Tesseract worker
+    console.log('Initializing Tesseract worker...');
+    worker = await createWorker();
+    await worker.loadLanguage('eng');
+    await worker.initialize('eng');
+
+    console.log(`Processing ${numPages} pages...`);
     for (let i = 0; i < numPages; i++) {
-      const page = pdfDoc.getPages()[i];
-      
-      // Extract text content from PDF using OCR
-      // Note: Since pdf-lib doesn't support direct rendering to image,
-      // we'll use OCR on the raw PDF content for now
-      const text = await worker.recognize(content);
-      if (text.data.text) {
-        textContent.push(text.data.text);
+      try {
+        console.log(`Processing page ${i + 1}/${numPages}`);
+        const text = await worker.recognize(content);
+        if (text.data.text) {
+          textContent.push(text.data.text);
+          console.log(`Extracted text from page ${i + 1}: ${text.data.text.substring(0, 100)}...`);
+        }
+      } catch (pageError) {
+        console.error(`Error processing page ${i + 1}:`, pageError);
+        // Continue with other pages even if one fails
       }
     }
 
-    // Analyze extracted text with Claude
-    const analysis = await analyzeDocument(textContent.join('\n'));
-    return parseClaudeResponse(analysis);
+    if (textContent.length === 0) {
+      throw new Error('No text could be extracted from the PDF');
+    }
+
+    console.log('Sending extracted text to Claude for analysis...');
+    const combinedText = textContent.join('\n');
+    console.log('Text being sent to Claude:', combinedText.substring(0, 500) + '...');
+    
+    const analysis = await analyzeDocument(combinedText);
+    console.log('Received Claude analysis:', JSON.stringify(analysis, null, 2));
+    
+    if (!Array.isArray(analysis) || analysis.length === 0) {
+      throw new Error('Invalid analysis result from Claude');
+    }
+
+    return analysis;
   } catch (error) {
     console.error('Error processing PDF:', error);
-    throw new Error('Failed to process PDF document');
+    throw new Error(`Failed to process PDF document: ${error instanceof Error ? error.message : 'Unknown error'}`);
   } finally {
-    await worker.terminate();
-  }
-}
-
-async function processImage(base64Image: string): Promise<ProcessedData[]> {
-  try {
-    // Convert base64 to buffer if needed
-    const imageBuffer = Buffer.from(base64Image, 'base64');
-    
-    // Initialize Tesseract worker
-    const worker = await createWorker();
-    
-    try {
-      // Perform OCR on the image
-      const result = await worker.recognize(imageBuffer);
-      const extractedText = result.data.text;
-      
-      // Use Claude to analyze the extracted text
-      const analysis = await analyzeDocument(extractedText);
-      return parseClaudeResponse(analysis);
-    } finally {
-      await worker.terminate();
-    }
-  } catch (error) {
-    console.error('Error processing image:', error);
-    throw new Error('Failed to process image');
-  }
-}
-
-function parseClaudeResponse(response: unknown): ProcessedData[] {
-  const data: ProcessedData[] = [];
-  
-  if (typeof response === 'string') {
-    try {
-      const parsedResponse = JSON.parse(response) as ClaudeResponse[];
-      if (Array.isArray(parsedResponse)) {
-        parsedResponse.forEach(item => {
-          if (item.streams && item.revenue && item.platform) {
-            data.push({
-              streams: parseInt(String(item.streams), 10),
-              revenue: parseFloat(String(item.revenue)),
-              platform: String(item.platform),
-              date: item.date || new Date().toISOString()
-            });
-          }
-        });
+    if (worker) {
+      try {
+        await worker.terminate();
+      } catch (terminateError) {
+        console.error('Error terminating Tesseract worker:', terminateError);
       }
-    } catch (error) {
-      console.error('Error parsing Claude response:', error);
     }
   }
-
-  return data;
 }
 
 async function updateProgress(batchId: string, progress: number): Promise<void> {
@@ -217,14 +252,16 @@ async function updateProgress(batchId: string, progress: number): Promise<void> 
 
 async function storeResults(batchId: string, results: ProcessedData[]): Promise<void> {
   try {
+    console.log(`Storing ${results.length} results for batch ${batchId}`);
     await db.update(processingStatus)
       .set({ 
         status: 'complete',
-        results: JSON.stringify(results),
+        results: results,
         completedAt: new Date(),
         error: null
       })
       .where(eq(processingStatus.batchId, batchId));
+    console.log('Results stored successfully');
   } catch (error) {
     console.error('Error storing results:', error);
     throw new Error('Failed to store processing results');

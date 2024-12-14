@@ -1,10 +1,10 @@
 import type { Express, Request } from "express";
 import { createServer, type Server } from "http";
 import multer from "multer";
-import { processFiles } from "./services/fileProcessor";
-import { calculateValuation } from "./services/valuationEngine";
-import { db } from "@db/index";
-import { valuations, processingStatus, valuationConfigSchema } from "@db/schema";
+import { processFiles } from "@/services/fileProcessor";
+import { calculateValuation } from "@/services/valuationEngine";
+import { db } from "@/db/index";
+import { valuations, processingStatus, valuationConfigSchema } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import type { ProcessingStatus } from "@/lib/types";
 
@@ -17,7 +17,7 @@ const upload = multer({
 
 export function registerRoutes(app: Express): Server {
   // File upload endpoint
-  app.post('/api/upload', upload.array('files'), async (req: Request & { files?: Express.Multer.File[] }, res) => {
+  app.post('/api/upload', upload.array('files'), async (req: Request & { files: Express.Multer.File[] }, res) => {
     try {
       if (!req.files || !Array.isArray(req.files)) {
         return res.status(400).json({ message: 'No files uploaded' });
