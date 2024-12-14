@@ -4,6 +4,7 @@ import { db } from '../../db';
 import { processingStatus, processedFiles } from '../../db/schema';
 import { v4 as uuidv4 } from 'uuid';
 import path from 'path';
+import { processFiles } from '../services/processFiles';
 
 const router = express.Router();
 
@@ -92,8 +93,10 @@ router.post('/', async (req, res) => {
         filesCount: files.length
       });
 
-      // Trigger processing pipeline (implement based on your needs)
-      // processFiles(batchId, files);
+      // Trigger processing pipeline
+      processFiles(batchId, files).catch(error => {
+        console.error('Processing pipeline failed:', error);
+      });
     });
   } catch (error) {
     console.error('Server error during upload:', error);
