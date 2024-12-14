@@ -24,84 +24,53 @@ interface ClaudeResponse {
 }
 
 export async function processFiles(files: Express.Multer.File[]): Promise<string> {
-  // Generate batch ID
   const batchId = Date.now().toString();
   console.log(`Starting batch processing with ID: ${batchId}`);
 
-  // Initialize processing status
   await db.insert(processingStatus).values({
     batchId,
     status: 'processing',
     progress: 0,
     createdAt: new Date(),
-    results: null,
-    error: null
+    results: null
   });
 
   try {
+    // Process files in parallel with a limit of 3 concurrent operations
+    const chunkSize = 3;
     const results: ProcessedData[] = [];
-    let progress = 0;
-    const increment = 100 / files.length;
-    const errors: string[] = [];
+    
+    for (let i = 0; i < files.length; i += chunkSize) {
+      const chunk = files.slice(i, i + chunkSize);
+      const chunkResults = await Promise.all(
+        chunk.map(async (file) => {
+          try {
+            if (file.size > 50 * 1024 * 1024) {
+              throw new Error(`File ${file.originalname} exceeds 50MB limit`);
+            }
+            return await processFile(file);
+          } catch (error) {
+            console.error(`Error processing ${file.originalname}:`, error);
+            return [];
+          }
+        })
+      );
 
-    for (const file of files) {
-      try {
-        console.log(`[Batch ${batchId}] Processing file: ${file.originalname}`);
-        
-        // Validate file size
-        if (file.size > 50 * 1024 * 1024) {
-          throw new Error(`File ${file.originalname} exceeds 50MB limit`);
-        }
-
-        // Process file and get results
-        const result = await processFile(file);
-        console.log(`[Batch ${batchId}] File processed successfully:`, {
-          filename: file.originalname,
-          recordCount: result.length,
-          sample: result[0]
-        });
-        
-        if (result.length === 0) {
-          throw new Error(`No valid data extracted from ${file.originalname}`);
-        }
-
-        results.push(...result);
-        progress += increment;
-        
-        // Update progress in database
-        await updateProgress(batchId, Math.min(progress, 99));
-      } catch (error) {
-        const errorMsg = error instanceof Error ? error.message : 'Unknown error';
-        errors.push(`Failed to process ${file.originalname}: ${errorMsg}`);
-        console.error(`[Batch ${batchId}] Error processing file:`, {
-          filename: file.originalname,
-          error: errorMsg
-        });
-      }
+      results.push(...chunkResults.flat());
+      const progress = Math.min(((i + chunk.length) / files.length) * 100, 99);
+      await updateProgress(batchId, progress);
     }
 
-    // Handle overall batch status
     if (results.length === 0) {
-      throw new Error(`No files were successfully processed. Errors: ${errors.join('; ')}`);
+      throw new Error('No valid data could be extracted from the files');
     }
 
-    // Store results and mark as complete
     await storeResults(batchId, results);
     await updateProgress(batchId, 100);
-    
-    console.log(`[Batch ${batchId}] Processing completed:`, {
-      totalFiles: files.length,
-      processedFiles: results.length,
-      totalRecords: results.length,
-      errors: errors.length > 0 ? errors : 'None'
-    });
 
     return batchId;
   } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
-    console.error(`[Batch ${batchId}] Processing failed:`, errorMessage);
-    
-    // Update status to error
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     await db.update(processingStatus)
       .set({ 
         status: 'error', 
@@ -109,8 +78,8 @@ export async function processFiles(files: Express.Multer.File[]): Promise<string
         updatedAt: new Date()
       })
       .where(eq(processingStatus.batchId, batchId));
-      
-    throw new Error(`File processing failed: ${errorMessage}`);
+    
+    throw error;
   }
 }
 

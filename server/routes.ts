@@ -1,10 +1,10 @@
 import type { Express, Request } from "express";
 import { createServer, type Server } from "http";
 import multer from "multer";
-import { processFiles } from "@/services/fileProcessor";
-import { calculateValuation } from "@/services/valuationEngine";
-import { db } from "@/db/index";
-import { valuations, processingStatus, valuationConfigSchema } from "@/db/schema";
+import { processFiles } from "./services/fileProcessor";
+import { calculateValuation } from "./services/valuationEngine";
+import { db } from "../db/index";
+import { valuations, processingStatus, valuationConfigSchema } from "../db/schema";
 import { eq } from "drizzle-orm";
 import type { ProcessingStatus } from "@/lib/types";
 

@@ -1,46 +1,46 @@
 import Anthropic from '@anthropic-ai/sdk';
 
-// Rate limiter implementation
+// Optimized rate limiter with token bucket algorithm
 class RateLimiter {
-  private queue: Array<() => Promise<any>> = [];
-  private processing = false;
-  private lastRequestTime = 0;
-  private requestsPerMinute = 5;
-  
-  async schedule<T>(fn: () => Promise<T>): Promise<T> {
-    return new Promise((resolve, reject) => {
-      this.queue.push(async () => {
-        try {
-          const result = await fn();
-          resolve(result);
-        } catch (error) {
-          reject(error);
-        }
-      });
-      
-      if (!this.processing) {
-        this.processQueue();
-      }
-    });
+  private tokens: number;
+  private lastRefill: number;
+  private readonly maxTokens: number;
+  private readonly refillRate: number; // tokens per second
+
+  constructor() {
+    this.maxTokens = 5;
+    this.refillRate = 1 / 12; // 1 token every 12 seconds (5 per minute)
+    this.tokens = this.maxTokens;
+    this.lastRefill = Date.now();
   }
-  
-  private async processQueue() {
-    if (this.queue.length === 0) {
-      this.processing = false;
-      return;
-    }
-    
-    this.processing = true;
+
+  private refillTokens(): void {
     const now = Date.now();
-    const timeToWait = Math.max(0, this.lastRequestTime + (60000 / this.requestsPerMinute) - now);
+    const timePassed = (now - this.lastRefill) / 1000; // convert to seconds
+    const newTokens = timePassed * this.refillRate;
+    this.tokens = Math.min(this.maxTokens, this.tokens + newTokens);
+    this.lastRefill = now;
+  }
+
+  async schedule<T>(fn: () => Promise<T>, retries = 2): Promise<T> {
+    this.refillTokens();
     
-    await new Promise(resolve => setTimeout(resolve, timeToWait));
+    if (this.tokens < 1) {
+      const waitTime = (1 - this.tokens) / this.refillRate * 1000;
+      await new Promise(resolve => setTimeout(resolve, waitTime));
+      return this.schedule(fn, retries);
+    }
+
+    this.tokens -= 1;
     
-    const fn = this.queue.shift();
-    if (fn) {
-      this.lastRequestTime = Date.now();
-      await fn();
-      this.processQueue();
+    try {
+      return await fn();
+    } catch (error: any) {
+      if (retries > 0 && error?.status === 429) {
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        return this.schedule(fn, retries - 1);
+      }
+      throw error;
     }
   }
 }
