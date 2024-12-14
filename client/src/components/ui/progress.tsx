@@ -1,3 +1,8 @@
+/**
+ * Progress Component
+ * Visual indicator for progress and loading states
+ */
+
 import * as React from "react"
 import * as ProgressPrimitive from "@radix-ui/react-progress"
 

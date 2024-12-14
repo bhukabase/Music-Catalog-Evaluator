@@ -1,18 +1,41 @@
+/**
+ * Processing Status Component
+ * Displays real-time status and progress of file processing operations
+ * @module components/ProcessingStatus
+ */
+
 import { useEffect } from "react";
 import { Card } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 
+/**
+ * Props interface for ProcessingStatus component
+ * @interface ProcessingStatusProps
+ */
 interface ProcessingStatusProps {
+  /** Array of files being processed */
   files: File[];
+  /** Current processing state */
   status: 'idle' | 'processing' | 'complete';
+  /** Callback function triggered when processing completes */
   onComplete: () => void;
 }
 
+/**
+ * ProcessingStatus Component
+ * Shows progress through multiple processing stages with visual feedback
+ * @param {ProcessingStatusProps} props - Component props
+ * @returns {JSX.Element} Rendered component
+ */
 export default function ProcessingStatus({
   files,
   status,
   onComplete
 }: ProcessingStatusProps) {
+  /**
+   * Processing steps configuration
+   * Each step represents a stage in the processing pipeline
+   */
   const steps = [
     { id: 'validation', label: 'File Validation', progress: 0 },
     { id: 'ocr', label: 'OCR Processing', progress: 0 },
@@ -20,8 +43,16 @@ export default function ProcessingStatus({
     { id: 'analysis', label: 'Analysis', progress: 0 }
   ];
 
+  /**
+   * Effect hook to poll processing status
+   * Updates progress and triggers completion callback
+   */
   useEffect(() => {
     if (status === 'processing') {
+      /**
+       * Polls the server for current processing status
+       * Updates progress for each step based on response
+       */
       const checkStatus = async () => {
         try {
           // Get the batch ID from the last upload response
@@ -53,7 +84,10 @@ export default function ProcessingStatus({
         }
       };
 
+      // Set up polling interval
       const interval = setInterval(checkStatus, 2000);
+      
+      // Cleanup interval on unmount or status change
       return () => clearInterval(interval);
     }
   }, [status, onComplete]);

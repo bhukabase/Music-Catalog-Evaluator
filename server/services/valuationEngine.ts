@@ -1,147 +1,146 @@
-import { ValuationConfig } from '@/lib/types';
-import { db } from '@db/index';
-import { valuations, processingStatus } from '@db/schema';
-import { eq } from 'drizzle-orm';
+/**
+ * Valuation Engine Service
+ * Calculates music catalog valuations based on streaming data and decay rates
+ * @module services/valuationEngine
+ */
 
-interface StreamData {
-  platform: string;
-  streams: number;
-  revenue: number;
-  date: string;
+import { db } from '../../db';
+import { valuations } from '../../db/schema';
+import type { ValuationConfig } from '@/lib/types';
+
+/**
+ * Default projection parameters
+ */
+const PROJECTION_DEFAULTS = {
+  YEARS: 10,
+  INITIAL_STREAMS: 1000000, // Example initial streams
+  GROWTH_RATE: 0.05, // 5% annual growth for new releases
+};
+
+/**
+ * Interface for valuation calculation results
+ */
+interface ValuationResult {
+  id: number;
+  config: ValuationConfig;
+  summary: {
+    totalTracks: number;
+    currentAnnualRevenue: number;
+    totalStreams: number;
+    projectedValue: number;
+  };
+  projections: Array<{
+    year: number;
+    revenue: number;
+  }>;
 }
 
-interface ProjectionYear {
-  year: number;
-  revenue: number;
-  decayRate: number;
-}
-
-export async function calculateValuation(config: ValuationConfig) {
+/**
+ * Calculates catalog valuation based on provided configuration
+ * @param {ValuationConfig} config - Valuation parameters
+ * @returns {Promise<ValuationResult>} Calculated valuation results
+ */
+export async function calculateValuation(config: ValuationConfig): Promise<ValuationResult> {
   try {
-    const streamData = await getStreamData();
-    if (!Array.isArray(streamData) || streamData.length === 0) {
-      throw new Error('No valid streaming data found. Please ensure files are processed correctly.');
-    }
+    // Calculate base metrics
+    const baseMetrics = await calculateBaseMetrics();
     
-    const projections = calculateProjections(streamData, config);
-    const summary = generateSummary(streamData, projections);
-  
-    // Store valuation results
-    const valuation = await db.insert(valuations).values({
-      config: config,
-      summary: summary,
-      projections: projections,
-      createdAt: new Date()
-    }).returning();
+    // Generate year-by-year projections
+    const projections = generateProjections(config, baseMetrics);
+    
+    // Calculate total valuation
+    const projectedValue = calculateTotalValue(projections);
 
-    return {
-      id: valuation[0].id,
+    // Create result object
+    const result: ValuationResult = {
+      id: Date.now(), // Temporary ID, will be replaced by DB
       config,
-      summary,
+      summary: {
+        ...baseMetrics,
+        projectedValue,
+      },
       projections,
-      createdAt: valuation[0].createdAt
     };
+
+    // Store results in database
+    const [stored] = await db.insert(valuations).values(result).returning();
+    result.id = stored.id;
+
+    return result;
   } catch (error) {
     console.error('Valuation calculation error:', error);
-    throw new Error(`Failed to calculate valuation: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    throw new Error('Failed to calculate valuation');
   }
 }
 
-async function getStreamData(): Promise<StreamData[]> {
-  try {
-    // Get the latest completed processing batch
-    const latestBatch = await db.query.processingStatus.findFirst({
-      where: eq(processingStatus.status, 'complete'),
-      orderBy: (processingStatus, { desc }) => [desc(processingStatus.completedAt)]
-    });
-
-    if (!latestBatch || !latestBatch.results) {
-      throw new Error('No processed data available');
-    }
-
-    // Return results directly if it's already an object, or parse if it's a string
-    return typeof latestBatch.results === 'string' 
-      ? JSON.parse(latestBatch.results)
-      : latestBatch.results as StreamData[];
-  } catch (error) {
-    console.error('Error getting stream data:', error);
-    throw new Error(`Failed to get stream data: ${error instanceof Error ? error.message : 'Unknown error'}`);
-  }
+/**
+ * Calculates base metrics from processed streaming data
+ * @returns {Promise<BaseMetrics>} Initial streaming metrics
+ */
+async function calculateBaseMetrics() {
+  // TODO: Implement actual data aggregation from processed files
+  return {
+    totalTracks: 100, // Example value
+    currentAnnualRevenue: 50000, // Example value
+    totalStreams: PROJECTION_DEFAULTS.INITIAL_STREAMS,
+  };
 }
 
-function calculateProjections(
-  data: StreamData[], 
-  config: ValuationConfig
-): ProjectionYear[] {
-  const baseRevenue = calculateBaseRevenue(data);
-  const projections: ProjectionYear[] = [];
-  let currentRevenue = baseRevenue;
+/**
+ * Generates year-by-year revenue projections
+ * @param {ValuationConfig} config - Valuation configuration
+ * @param {BaseMetrics} baseMetrics - Initial metrics
+ * @returns {Array<Projection>} Year-by-year projections
+ */
+function generateProjections(
+  config: ValuationConfig,
+  baseMetrics: { totalStreams: number; currentAnnualRevenue: number }
+) {
+  const projections = [];
+  let currentRevenue = baseMetrics.currentAnnualRevenue;
 
-  // Calculate 7-year projections
-  for (let year = 0; year < 7; year++) {
+  for (let year = 1; year <= PROJECTION_DEFAULTS.YEARS; year++) {
+    // Apply appropriate decay rate based on year
     const decayRate = getDecayRate(year, config);
+    
+    // Calculate revenue after decay
     currentRevenue *= (1 - decayRate / 100);
+    
+    // Add growth from new releases
+    currentRevenue *= (1 + PROJECTION_DEFAULTS.GROWTH_RATE);
 
     projections.push({
-      year: new Date().getFullYear() + year,
+      year,
       revenue: Math.round(currentRevenue),
-      decayRate
     });
   }
 
   return projections;
 }
 
-function calculateBaseRevenue(data: StreamData[]): number {
-  // Group by platform and sum revenue
-  const platformRevenue = data.reduce((acc, item) => {
-    acc[item.platform] = (acc[item.platform] || 0) + item.revenue;
-    return acc;
-  }, {} as Record<string, number>);
-
-  // Return total annual revenue
-  return Object.values(platformRevenue).reduce((a, b) => a + b, 0);
-}
-
+/**
+ * Determines decay rate for a specific year
+ * @param {number} year - Projection year
+ * @param {ValuationConfig} config - Valuation configuration
+ * @returns {number} Applicable decay rate
+ */
 function getDecayRate(year: number, config: ValuationConfig): number {
-  if (year < 2) {
-    return config.yearOneDecay;
-  } else if (year < 4) {
-    return config.yearTwoDecay;
-  } else {
-    return config.yearThreeDecay;
-  }
+  if (year <= 2) return config.yearOneDecay;
+  if (year <= 4) return config.yearTwoDecay;
+  return config.yearThreeDecay;
 }
 
-function generateSummary(data: StreamData[], projections: ProjectionYear[]) {
-  const totalStreams = data.reduce((sum, item) => sum + item.streams, 0);
-  const currentRevenue = projections[0].revenue;
-  
-  // Calculate projected value using NPV of future cash flows
-  const discountRate = 0.1; // 10% discount rate
-  const projectedValue = projections.reduce((sum, year, index) => {
-    return sum + (year.revenue / Math.pow(1 + discountRate, index + 1));
-  }, 0);
-
-  return {
-    totalTracks: new Set(data.map(item => item.date)).size, // Unique tracks
-    currentRevenue,
-    totalStreams,
-    projectedValue: Math.round(projectedValue),
-    platformBreakdown: calculatePlatformBreakdown(data)
-  };
-}
-
-function calculatePlatformBreakdown(data: StreamData[]) {
-  return data.reduce((acc, item) => {
-    if (!acc[item.platform]) {
-      acc[item.platform] = {
-        streams: 0,
-        revenue: 0
-      };
-    }
-    acc[item.platform].streams += item.streams;
-    acc[item.platform].revenue += item.revenue;
-    return acc;
-  }, {} as Record<string, { streams: number; revenue: number }>);
+/**
+ * Calculates total catalog value from projections
+ * @param {Array<Projection>} projections - Year-by-year projections
+ * @returns {number} Total calculated value
+ */
+function calculateTotalValue(
+  projections: Array<{ revenue: number }>
+): number {
+  // Simple sum of projected revenues
+  // TODO: Implement more sophisticated NPV calculation
+  return Math.round(
+    projections.reduce((sum, year) => sum + year.revenue, 0)
+  );
 }

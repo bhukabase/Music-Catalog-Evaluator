@@ -1,3 +1,9 @@
+/**
+ * File Upload Component
+ * Handles file selection, validation, and upload processing
+ * @module components/FileUpload
+ */
+
 import { useCallback, useState } from "react";
 import { useDropzone } from "react-dropzone";
 import { Button } from "@/components/ui/button";
@@ -5,18 +11,36 @@ import { Progress } from "@/components/ui/progress";
 import { Card } from "@/components/ui/card";
 import { X } from "lucide-react";
 
+/**
+ * Props interface for FileUpload component
+ * @interface FileUploadProps
+ */
 interface FileUploadProps {
+  /** Callback function triggered when files are successfully uploaded */
   onFilesUploaded: (files: File[]) => void;
 }
 
+/**
+ * FileUpload Component
+ * Provides drag-and-drop and click-to-upload functionality with progress tracking
+ * @param {FileUploadProps} props - Component props
+ * @returns {JSX.Element} Rendered component
+ */
 export default function FileUpload({ onFilesUploaded }: FileUploadProps) {
+  /** State for tracking selected files */
   const [uploadedFiles, setUploadedFiles] = useState<File[]>([]);
+  /** State for tracking upload progress */
   const [uploadProgress, setUploadProgress] = useState(0);
 
+  /**
+   * Handles files dropped or selected
+   * Validates file size and adds to upload queue
+   * @param {File[]} acceptedFiles - Array of files selected by user
+   */
   const onDrop = useCallback((acceptedFiles: File[]) => {
     console.log('Files dropped:', acceptedFiles);
     const validFiles = acceptedFiles.filter(file => {
-      const isValidSize = file.size <= 50 * 1024 * 1024; // 50MB
+      const isValidSize = file.size <= 50 * 1024 * 1024; // 50MB limit
       if (!isValidSize) {
         console.warn(`File ${file.name} exceeds 50MB limit`);
       }
@@ -25,6 +49,7 @@ export default function FileUpload({ onFilesUploaded }: FileUploadProps) {
     setUploadedFiles((prev) => [...prev, ...validFiles]);
   }, []);
 
+  /** Configure dropzone with file type restrictions and handlers */
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
     accept: {
@@ -39,10 +64,18 @@ export default function FileUpload({ onFilesUploaded }: FileUploadProps) {
     multiple: true
   });
 
+  /**
+   * Removes file from upload queue
+   * @param {number} index - Index of file to remove
+   */
   const removeFile = (index: number) => {
     setUploadedFiles((prev) => prev.filter((_, i) => i !== index));
   };
 
+  /**
+   * Initiates file upload process
+   * Handles upload progress and error states
+   */
   const handleUpload = async () => {
     if (uploadedFiles.length === 0) {
       alert('Please select files to upload');
@@ -82,6 +115,7 @@ export default function FileUpload({ onFilesUploaded }: FileUploadProps) {
 
   return (
     <div className="space-y-6">
+      {/* Dropzone area */}
       <div
         {...getRootProps()}
         className={`border-2 border-dashed rounded-lg p-12 text-center hover:border-primary cursor-pointer
@@ -112,6 +146,7 @@ export default function FileUpload({ onFilesUploaded }: FileUploadProps) {
         </div>
       </div>
 
+      {/* File list and upload controls */}
       {uploadedFiles.length > 0 && (
         <Card className="p-4">
           <h3 className="font-semibold mb-4">Uploaded Files</h3>

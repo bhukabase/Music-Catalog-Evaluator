@@ -1,22 +1,37 @@
+/**
+ * Main server application entry point
+ * @module server/index
+ */
+
 import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
 
+/**
+ * Express application instance
+ * Configures middleware and initializes server
+ */
 const app = express();
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 
+/**
+ * Request logging middleware
+ * Captures and logs API request details including response time and payload
+ */
 app.use((req, res, next) => {
   const start = Date.now();
   const path = req.path;
   let capturedJsonResponse: Record<string, any> | undefined = undefined;
 
+  // Intercept json responses for logging
   const originalResJson = res.json;
   res.json = function (bodyJson, ...args) {
     capturedJsonResponse = bodyJson;
     return originalResJson.apply(res, [bodyJson, ...args]);
   };
 
+  // Log request details on completion
   res.on("finish", () => {
     const duration = Date.now() - start;
     if (path.startsWith("/api")) {
@@ -36,9 +51,14 @@ app.use((req, res, next) => {
   next();
 });
 
+// IIFE to allow async/await
 (async () => {
   const server = registerRoutes(app);
 
+  /**
+   * Global error handling middleware
+   * Catches and formats all uncaught errors
+   */
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
     const status = err.status || err.statusCode || 500;
     const message = err.message || "Internal Server Error";
@@ -47,21 +67,23 @@ app.use((req, res, next) => {
     throw err;
   });
 
-  // importantly only setup vite in development and after
-  // setting up all the other routes so the catch-all route
-  // doesn't interfere with the other routes
+  // Setup development or production server
   if (app.get("env") === "development") {
     await setupVite(app, server);
   } else {
     serveStatic(app);
   }
 
-  // Try to start with port 5000, fallback to other ports if needed
+  /**
+   * Attempts to start server on specified port
+   * Falls back to next available port if occupied
+   * @param {number} port - Port number to attempt
+   * @returns {Promise<number>} Successfully bound port
+   */
   const tryPort = (port: number): Promise<number> => {
     return new Promise((resolve, reject) => {
       server.once('error', (err: any) => {
         if (err.code === 'EADDRINUSE') {
-          // Try next port
           tryPort(port + 1).then(resolve).catch(reject);
         } else {
           reject(err);
@@ -76,7 +98,7 @@ app.use((req, res, next) => {
     });
   };
 
-  // Start server with initial port 5000
+  // Initialize server
   tryPort(5000)
     .then(port => {
       log(`Server running on port ${port}`);

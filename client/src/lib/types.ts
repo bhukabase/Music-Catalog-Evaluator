@@ -7,9 +7,13 @@ export interface ValuationConfig {
 }
 
 export interface ProcessingStatus {
-  status: 'pending' | 'processing' | 'complete' | 'error';
+  batchId: string;
+  status: 'idle' | 'processing' | 'complete' | 'error';
   progress: number;
+  filesProcessed: number;
+  totalFiles: number;
   error?: string;
+  updatedAt?: Date;
 }
 
 export interface ValuationReport {

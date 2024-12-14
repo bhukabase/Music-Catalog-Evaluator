@@ -8,9 +8,7 @@
     "moduleResolution": "node",
     "baseUrl": ".",
     "paths": {
-      "@/*": ["./client/src/*"],
-      "@db/*": ["./db/*"],
-      "@server/*": ["./server/*"]
+      "@/*": ["client/src/*"]
     },
     "types": ["node", "vite/client"],
     "jsx": "preserve",
