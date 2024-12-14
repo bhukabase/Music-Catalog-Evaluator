@@ -6,6 +6,7 @@
 import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
+import uploadRouter from './routes/upload';
 
 /**
  * Express application instance
@@ -97,6 +98,9 @@ app.use((req, res, next) => {
       server.listen(port, "0.0.0.0");
     });
   };
+
+  // Move this BEFORE the tryPort call
+  app.use('/api/upload', uploadRouter);
 
   // Initialize server
   tryPort(5000)
